@@ -82,7 +82,7 @@ public:
 
         // Text
         static constexpr QRgb text              = 0xFF1E395B;
-        static constexpr QRgb textDisabled      = 0xFFA2ABAA;
+        static constexpr QRgb textDisabled      = 0xFF859EBF;
         static constexpr QRgb selectionText     = 0xffffffff;
         static constexpr QRgb groupBoxTitle     = 0xFF122034;
 
@@ -130,11 +130,15 @@ public:
         }
 
         // Disabled
+        pal.setColor(QPalette::Disabled, QPalette::Window,     QColor(Colors::windowBg));
         pal.setColor(QPalette::Disabled, QPalette::WindowText, QColor(Colors::textDisabled));
         pal.setColor(QPalette::Disabled, QPalette::Text,       QColor(Colors::textDisabled));
         pal.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(Colors::textDisabled));
-        pal.setColor(QPalette::Disabled, QPalette::Base,       bg);
-        pal.setColor(QPalette::Disabled, QPalette::Window,     bg);
+        pal.setColor(QPalette::Disabled, QPalette::Base,       QColor(Colors::readOnlyInputBg));
+        pal.setColor(QPalette::Disabled, QPalette::Button,     QColor(Colors::readOnlyInputBg));
+        pal.setColor(QPalette::Disabled, QPalette::Highlight,  QColor(Colors::borderLight));
+        pal.setColor(QPalette::Disabled, QPalette::Mid,        QColor(Colors::borderLight));
+        pal.setColor(QPalette::Disabled, QPalette::Dark,       QColor(Colors::borderLight));
 
         // Extras
         pal.setColor(QPalette::ToolTipBase, QColor(Colors::toolTipBgStart));
@@ -183,12 +187,16 @@ public:
                 readOnly = le->isReadOnly();
             else if (auto sb = qobject_cast<const QAbstractSpinBox*>(w->parentWidget()))
                 readOnly = sb->isReadOnly();
+            else if (auto de = qobject_cast<const QDateEdit*>(w->parentWidget()))
+                readOnly = de->isReadOnly();
+            else if (auto dte = qobject_cast<const QDateTimeEdit*>(w->parentWidget()))
+                readOnly = dte->isReadOnly();
             const bool focus    = opt->state & State_HasFocus;
             const bool hover    = w && w->underMouse();
-            bool enabled = opt->state & State_Enabled;
+            bool enabled = w->isEnabled();
             if(!enabled)
             {
-                p->setPen(QColor(Colors::borderLight));
+                p->setPen(Qt::NoPen);
                 p->setBrush(QColor(Colors::readOnlyInputBg));
                 p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
                 return;
@@ -218,8 +226,8 @@ public:
                                       (w->parentWidget() &&
                                        qobject_cast<const QHeaderView*>(w->parentWidget()->parentWidget())));
             if(!DoubleBorder)
-            p->drawRect(inHeader ? opt->rect.adjusted(-1, -1, -1, -1)
-                                 : opt->rect.adjusted(0, 0, -1, -1));
+                p->drawRect(inHeader ? opt->rect.adjusted(-1, -1, -1, -1)
+                                     : opt->rect.adjusted(0, 0, -1, -1));
             p->restore();
             return;
         }
@@ -236,6 +244,23 @@ public:
             p->restore();
             return;
         }
+        case PE_PanelTipLabel:
+        {
+            p->save();
+
+            // Background
+            QLinearGradient g(opt->rect.topLeft(), opt->rect.bottomLeft());
+            g.setColorAt(0, QColor(Colors::toolTipBgStart));
+            g.setColorAt(1, QColor(Colors::toolTipBgEnd));
+            p->setBrush(g);
+            // Border : 1px solid #1e395b
+            p->setPen(QPen(QColor("#1e395b"), 1));
+
+            p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
+
+            p->restore();
+            return;
+        }
         // ── Buttons ───────────────────────────────────────────
         case PE_PanelButtonCommand:
         case PE_PanelButtonTool: {
@@ -243,74 +268,15 @@ public:
                 QProxyStyle::drawPrimitive(pe, opt, p, w);
                 return;
             }
+
             p->save();
             const bool hover   = opt->state & State_MouseOver;
             const bool pressed = opt->state & State_Sunken;
             const bool checked = opt->state & State_On;
-            const bool enabled = opt->state & State_Enabled;
+            const bool enabled = w->isEnabled();
             const QRect r      = opt->rect;
-
-            if (pressed) {
-                QLinearGradient g(r.topLeft(), r.bottomLeft());
-                g.setColorAt(0, QColor(Colors::buttonPressedBot));
-                g.setColorAt(1, QColor(Colors::buttonPressedTop));
-                p->setBrush(g);
-                p->setPen(QColor(Colors::borderHover));
-                p->drawRoundedRect(r, 2, 2);
-
-            } else if (checked) {
-                QLinearGradient g(r.topLeft(), r.bottomLeft());
-                g.setColorAt(0, QColor(0xFFA8BFD9));
-                g.setColorAt(1, QColor(0xFFBCCEE7));
-                p->setBrush(g);
-                p->setPen(QColor(Colors::borderLight));
-                p->drawRoundedRect(r, 3, 3);
-
-            } else if (hover) {
-                QRectF rect = r.adjusted(1,1,-1,-1);
-
-                // Rayon très faible (presque rectangle)
-                qreal radius = 2;
-
-                // Activer AA
-
-
-                // 1. Fond dégradé doux (aspect glass)
-                QLinearGradient bg(rect.topLeft(), rect.bottomLeft());
-                bg.setColorAt(0.0, QColor(255, 245, 200));   // haut clair
-                bg.setColorAt(1.0, QColor(240, 220, 150));   // bas un peu plus foncé
-
-                p->setPen(Qt::NoPen);
-                p->setBrush(bg);
-                p->drawRoundedRect(rect, radius, radius);
-
-                // 2. Reflet en haut (RECTANGULAIRE, pas arrondi)
-                QRectF highlight = rect.adjusted(2, 2, -2, -rect.height()/2);
-
-                QLinearGradient hl(highlight.topLeft(), highlight.bottomLeft());
-                hl.setColorAt(0.0, QColor(255,255,255,180));
-                hl.setColorAt(1.0, QColor(255,255,255,0));
-
-                p->fillRect(highlight, hl);  // <-- important : PAS rounded
-
-                // 3. Bordure extérieure
-                p->setPen(QPen(QColor(240, 190, 90), 1));
-                p->setBrush(Qt::NoBrush);
-                p->drawRoundedRect(rect, radius, radius);
-
-                // 4. Bordure intérieure (effet double bord comme image)
-                QRectF inner = rect.adjusted(2, 2, -2, -2);
-                p->setPen(QPen(QColor(255, 255, 255, 120), 1));
-                p->drawRoundedRect(inner, radius, radius);
-
-            }
-            else if(!enabled)
+            if(enabled)
             {
-                p->setPen(QColor(Colors::borderLight));
-                p->drawRoundedRect(r.adjusted(0, 0, -1, -1), 2,2);
-                p->setBrush(QColor(Colors::readOnlyInputBg));
-            }
-            else {
                 // Normal: clair en haut, sombre en bas
                 QLinearGradient g(r.topLeft(), r.bottomLeft());
                 g.setColorAt(0, QColor(Colors::buttonBgEnd));
@@ -318,7 +284,69 @@ public:
                 p->setBrush(g);
                 p->setPen(QColor(Colors::borderLight));
                 p->drawRoundedRect(r.adjusted(1, 1, -1, -1), 3,3);
+                if (pressed) {
+                    QLinearGradient g(r.topLeft(), r.bottomLeft());
+                    g.setColorAt(0, QColor(Colors::buttonPressedBot));
+                    g.setColorAt(1, QColor(Colors::buttonPressedTop));
+                    p->setBrush(g);
+                     p->setPen(QPen(QColor(240, 190, 90), 1));
+                    p->drawRoundedRect(r.adjusted(0,0,-1,-1), 2, 2);
+
+                } else if (checked) {
+                    QLinearGradient g(r.topLeft(), r.bottomLeft());
+                    g.setColorAt(0, QColor(0xFFA8BFD9));
+                    g.setColorAt(1, QColor(0xFFBCCEE7));
+                    p->setBrush(g);
+                    p->setPen(QColor(Colors::borderLight));
+                    p->drawRoundedRect(r, 3, 3);
+
+                } else if (hover) {
+                    QRectF rect = r.adjusted(1,1,-1,-1);
+
+                    // Rayon très faible (presque rectangle)
+                    qreal radius = 2;
+
+                    // Activer AA
+
+
+                    // 1. Fond dégradé doux (aspect glass)
+                    QLinearGradient bg(rect.topLeft(), rect.bottomLeft());
+                    bg.setColorAt(0.0, QColor(255, 245, 200));   // haut clair
+                    bg.setColorAt(1.0, QColor(240, 220, 150));   // bas un peu plus foncé
+
+                    p->setPen(Qt::NoPen);
+                    p->setBrush(bg);
+                    p->drawRoundedRect(rect, radius, radius);
+
+                    // 2. Reflet en haut (RECTANGULAIRE, pas arrondi)
+                    QRectF highlight = rect.adjusted(2, 2, -2, -rect.height()/2);
+
+                    QLinearGradient hl(highlight.topLeft(), highlight.bottomLeft());
+                    hl.setColorAt(0.0, QColor(255,255,255,180));
+                    hl.setColorAt(1.0, QColor(255,255,255,0));
+
+                    p->fillRect(highlight, hl);  // <-- important : PAS rounded
+
+                    // 3. Bordure extérieure
+                    p->setPen(QPen(QColor(240, 190, 90), 1));
+                    p->setBrush(Qt::NoBrush);
+                    p->drawRoundedRect(rect, radius, radius);
+
+                    // 4. Bordure intérieure (effet double bord comme image)
+                    QRectF inner = rect.adjusted(2, 2, -2, -2);
+                    p->setPen(QPen(QColor(255, 255, 255, 120), 1));
+                    p->drawRoundedRect(inner, radius, radius);
+
+                }
             }
+            else
+            {
+                p->setPen(QColor(Colors::borderLight));
+                p->setBrush(QColor(Colors::readOnlyInputBg));
+
+                p->drawRoundedRect(r.adjusted(0, 0, -1, -1), 2,2);
+            }
+
             p->restore();
             return;
         }
@@ -336,23 +364,33 @@ public:
         {
 
             if (!w) break;
+            if(hasStyleSheet(w))
+            {
+                QProxyStyle::drawPrimitive(pe, opt, p, w);
+                return;
+            }
+            bool isTable = qobject_cast<const QTableView*>(w)
+                           || qobject_cast<const QTreeView*>(w)
+                           || qobject_cast<const QListView*>(w);
 
-
-            const bool enabled = opt->state & State_Enabled;
+            const bool enabled = w->isEnabled();
 
             p->save();
 
-            if (!enabled) {
+            if (!enabled && !isTable) {  // ✅ les tables sont exclues du fond gris
                 p->setPen(Qt::NoPen);
                 p->setBrush(QColor(Colors::menuBg));
                 p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
                 p->restore();
                 return;
             }
+            if(isTable)
+            {
 
+                p->setBrush(QColor(Qt::white));
 
-
-            p->restore();
+                p->restore();
+            }
 
         }
         // ── QTabWidget pane: fond blanc ───────────────────────
@@ -365,9 +403,23 @@ public:
             return;
         }
 
-        // ── Generic frames ────────────────────────────────────
+            // ── Generic frames ────────────────────────────────────
         case PE_Frame:
+        {
+            bool isTable = qobject_cast<const QTableView*>(w) || qobject_cast<const QTreeView*>(w) || qobject_cast<const QListView*>(w);
+            if(!isTable)
+            {
+                return;
+            }
+            else
+            {
+                p->save();
 
+                p->setBrush(Qt::NoBrush);
+                p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
+                p->restore();
+            }
+        }
         case PE_FrameLineEdit: {
             if (hasStyleSheet(w)){
                 QProxyStyle::drawPrimitive(pe, opt, p, w);
@@ -376,11 +428,27 @@ public:
             if (w && qobject_cast<const QGroupBox*>(w) && qobject_cast<const QGroupBox*>(w)->isFlat()) {
                 return;
             }
-
+            bool enabled = w->isEnabled();
+            bool readOnly = false;
+            if (auto le = qobject_cast<const QLineEdit*>(w))
+                readOnly = le->isReadOnly();
+            else if (auto sb = qobject_cast<const QAbstractSpinBox*>(w))
+                readOnly = sb->isReadOnly();
+            if(readOnly)
+            {
+                p->setPen(QColor(Colors::borderLight));
+                p->setBrush(QColor(Colors::readOnlyInputBg));
+                p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
+                return;
+            }
             p->save();
 
             p->setPen(QColor(Colors::border));
-
+            if(!enabled)
+            {
+                p->setPen(QColor(Colors::borderLight));
+                p->setBrush(QColor(Colors::readOnlyInputBg));
+            }
             p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
             p->restore();
             return;
@@ -397,12 +465,10 @@ public:
             return;
         }
 
-        case PE_PanelScrollAreaCorner: {
-            p->save();
-            p->fillRect(opt->rect, QColor(Qt::white));
-            p->restore();
+        case PE_PanelItemViewItem: {
             return;
         }
+
         case PE_IndicatorMenuCheckMark: {
 
             p->save();
@@ -430,14 +496,15 @@ public:
             p->setRenderHint(QPainter::Antialiasing, true);
             const bool checked       = (opt->state & State_On) || (opt->state & State_Sunken);
             const bool indeterminate = opt->state & State_NoChange;
-            const bool enabled       = opt->state & State_Enabled;
+            const bool enabled       = w->isEnabled();
+            bool hover = opt->state & State_MouseOver;
             QRect r = opt->rect.adjusted(1, 1, -1, -1);
 
             const bool inMenu = w && qobject_cast<const QMenu*>(w);
 
             if (!inMenu) {
                 // Fond + bordure uniquement hors menu
-                p->setBrush(enabled ? Qt::transparent : QColor(Colors::readOnlyInputBg));
+                p->setBrush(enabled ?hover?QColor(Colors::buttonHoverBg):  QColor(Qt::transparent) :QColor(Colors::readOnlyInputBg));
                 p->setPen(QColor(enabled ? Colors::border : Colors::borderLight));
                 p->drawRect(r);
             }
@@ -462,7 +529,7 @@ public:
 
 
             const bool checked = opt->state & State_On;
-            const bool enabled = opt->state & State_Enabled;
+            const bool enabled = w->isEnabled();
 
             QRect r = opt->rect.adjusted(1, 1, -1, -1);
 
@@ -481,6 +548,7 @@ public:
             p->restore();
             return;
         }
+
         default:
             break;
         }
@@ -561,7 +629,7 @@ public:
             case QStyle::SH_TabBar_PreferNoArrows:
             case QStyle::SH_ScrollBar_LeftClickAbsolutePosition:
             case QStyle::SH_ListViewExpand_SelectMouseType:
-            case QStyle::SH_UnderlineShortcut:
+            case QStyle::SH_UnderlineShortcut: return 0;
             case QStyle::SH_SpinBox_AnimateButton:
             case QStyle::SH_SpinBox_KeyPressAutoRepeatRate:
             case QStyle::SH_SpinBox_ClickAutoRepeatRate:
@@ -615,7 +683,6 @@ public:
             case QStyle::SH_DockWidget_ButtonsHaveFrame:
             case QStyle::SH_ToolButtonStyle:
             case QStyle::SH_RequestSoftwareInputPanel:
-            case QStyle::SH_ScrollBar_Transient:
             case QStyle::SH_Menu_SupportsSections:
             case QStyle::SH_ToolTip_WakeUpDelay:
             case QStyle::SH_ToolTip_FallAsleepDelay:
@@ -638,17 +705,20 @@ public:
                 break;
             case QStyle::SH_Widget_Animate:
                 break;
+            case QStyle::SH_ItemView_ActivateItemOnSingleClick:
+            case QStyle::SH_ScrollBar_Transient:
+                break;
             }
         }
-        else
-        {
 
-        }
         if (sh == SH_Table_GridLineColor) {
             return static_cast<int>(QColor(0xFFC4D9F6).rgba());
         }
         if (sh == SH_ComboBox_Popup)
             return 0;  // ajouter cette ligne
+        if(sh == SH_UnderlineShortcut)
+            return QProxyStyle::styleHint(SH_UnderlineShortcut, opt, w, shret);
+
         return QProxyStyle::styleHint(sh, opt, w, shret);
     }
     void polish(QWidget *w) override
@@ -768,13 +838,12 @@ public:
                                    opt->rect.center().y() - 8,
                                    16, 16);
                     mi->icon.paint(p, iconRect, Qt::AlignCenter,
-                                   (opt->state & State_Enabled) ? QIcon::Normal : QIcon::Disabled,
+                                   (w->isEnabled()) ? QIcon::Normal : QIcon::Disabled,
                                    (opt->state & State_Selected) ? QIcon::On : QIcon::Off);
                 }
 
                 // Texte + raccourci manuellement (sans appeler Fusion)
-                p->save();
-                p->setPen((opt->state & State_Enabled) ? QColor(Colors::text)
+                p->setPen((w->isEnabled()) ? QColor(Colors::text)
                                                        : QColor(Colors::textDisabled));
                 QRect textRect = opt->rect.adjusted(28, 0, -10, 0);
                 p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextSingleLine,
@@ -820,16 +889,18 @@ public:
         }
 
         case CE_Header: {
-            bool enabled = opt->state & State_Enabled;
+            bool enabled = w->isEnabled();
 
             p->save();
             // Dégradé vertical : clair en haut → sombre en bas
             if(enabled)
             {
-                QLinearGradient grad(opt->rect.topLeft(), opt->rect.bottomLeft());
-                grad.setColorAt(0, QColor(Colors::headerBgEnd));   // clair en haut
-                grad.setColorAt(1, QColor(Colors::headerBgStart)); // sombre en bas
-                p->fillRect(opt->rect.adjusted(-1, -1, -1, -1), grad);
+                QLinearGradient g(opt->rect.topLeft(), opt->rect.bottomLeft());
+                g.setColorAt(0, QColor(Colors::headerBgEnd));
+                g.setColorAt(1, QColor(Colors::headerBgStart));
+                p->fillRect(opt->rect, g);
+                p->setPen(QColor(Colors::groupBoxBorder));
+                p->fillRect(opt->rect.adjusted(-1, -1, -1, -1), g);
                 p->setPen(QColor(Colors::groupBoxBorder));
                 p->drawRect(opt->rect.adjusted(-1, 0, -1, -1));
             }
@@ -975,6 +1046,7 @@ public:
         case QStyle::CE_CustomBase:
 
 
+
             break;
         case CE_HeaderEmptyArea: {
             p->save();
@@ -1012,6 +1084,7 @@ public:
         if (touchMode && type == CT_MenuItem) {
             s.setHeight(qMax(s.height(), 40));
         }
+
         return s;
     }
     // =========================================================
@@ -1067,6 +1140,8 @@ public:
                                 checkOpt.state |= State_On;
                             else
                                 checkOpt.state &= ~State_On;
+
+
                             drawPrimitive(PE_IndicatorCheckBox, &checkOpt, p, w);
                         }
 
@@ -1095,19 +1170,21 @@ public:
                 p->save();
                 const bool hover = cb->state & State_MouseOver;
                 const bool focus = cb->state & State_HasFocus;
-                QColor bg = (hover || focus) ? QColor(0xFFFFD92B)
-                                             : QColor(Colors::inputBg);
+                bool enabled = w->isEnabled();
+                QColor bg = enabled?(hover || focus) ? QColor(0xFFFFD92B)
+                                             : QColor(Colors::inputBg) : QColor(Colors::readOnlyInputBg);
 
                 // Fond + bordure extérieure
                 p->setBrush(bg);
-                p->setPen(QColor(Colors::border));
+
+                p->setPen(QColor(enabled?Colors::border : Colors::borderLight));
                 p->drawRect(cb->rect.adjusted(0, 0, -2, -1));
 
                 // Zone flèche
                 QRect arrowRect = subControlRect(CC_ComboBox, opt, SC_ComboBoxArrow, w);
 
                 // Alignement pixel perfect
-                QRectF r = arrowRect.adjusted(0.5, 0.5, -0.5, -1);
+                QRectF r = arrowRect.adjusted(0,0,0, -1);
 
                 // Dégradé
                 QLinearGradient grad(r.topLeft(), r.bottomLeft());
@@ -1116,7 +1193,10 @@ public:
 
                 // 1. Remplissage
                 p->setPen(Qt::NoPen);
+                if(enabled)
                 p->setBrush(grad);
+                else
+                    p->setBrush(QColor(Colors::readOnlyInputBg));
                 p->drawRect(r);
 
                 // 2. Bordure (après !)
@@ -1260,8 +1340,17 @@ public:
                 bool readOnly = qobject_cast<const QAbstractSpinBox*>(w) && qobject_cast<const QAbstractSpinBox*>(w)->isReadOnly();
                 const bool hover = sb->state & State_MouseOver;
                 const bool focus = sb->state & State_HasFocus;
+                bool enabled = w->isEnabled();
+                if(!enabled)
+                {
+                    p->setPen(QColor(Colors::borderLight));
+                    p->setBrush(QColor(Colors::readOnlyInputBg));
+                    p->fillRect(opt->rect,Colors::readOnlyInputBg);
+                    p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
+                    return;
+                }
                 QColor bg =readOnly? QColor(Colors::readOnlyInputBg) : (hover || focus) ? QColor(0xFFFFD92B)
-                                             : QColor(Colors::inputBg);
+                                                                                          : QColor(Colors::inputBg);
 
                 // Fond uniforme sans bordure interne
                 p->setBrush(bg);
@@ -1372,7 +1461,7 @@ public:
             case PM_HeaderDefaultSectionSizeVertical: return 16;
             case PM_ButtonDefaultIndicator: return touchMode ? 0 : 2;
             case PM_ComboBoxFrameWidth:     return touchMode ? 4 : 2;
-                default: break;
+            default: break;
             }
 
 
