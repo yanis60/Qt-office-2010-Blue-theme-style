@@ -9,8 +9,10 @@
 #include "qlistview.h"
 #include "qmainwindow.h"
 #include "qpushbutton.h"
+#include "qscrollarea.h"
 #include "qscroller.h"
 #include "qspinbox.h"
+#include "qstyleditemdelegate.h"
 #include "qtableview.h"
 #include "qtreeview.h"
 #include <QProxyStyle>
@@ -24,6 +26,7 @@
 #include <QComboBox>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMenuBar>
 #include <QLayout>
 #include <QDialog>
 #include <QScrollBar>
@@ -100,8 +103,13 @@ public:
     // ── Constructor ──────────────────────────────────────────
     explicit LightBlueStyle()
         : QProxyStyle(QStyleFactory::create("Fusion"))
-    {}
+    {
 
+    }
+    ~LightBlueStyle() override
+    {
+        delete vistaStyle;
+    }
     // ── Static palette factory ───────────────────────────────
     static QPalette palette()
     {
@@ -196,8 +204,9 @@ public:
             bool enabled = w->isEnabled();
             if(!enabled)
             {
-                p->setPen(Qt::NoPen);
+                p->setPen(QColor(Colors::borderLight));
                 p->setBrush(QColor(Colors::readOnlyInputBg));
+                if(!DoubleBorder)
                 p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
                 return;
             }
@@ -289,7 +298,7 @@ public:
                     g.setColorAt(0, QColor(Colors::buttonPressedBot));
                     g.setColorAt(1, QColor(Colors::buttonPressedTop));
                     p->setBrush(g);
-                     p->setPen(QPen(QColor(240, 190, 90), 1));
+                    p->setPen(QPen(QColor(240, 190, 90), 1));
                     p->drawRoundedRect(r.adjusted(0,0,-1,-1), 2, 2);
 
                 } else if (checked) {
@@ -392,6 +401,7 @@ public:
                 p->restore();
             }
 
+            p->restore();
         }
         // ── QTabWidget pane: fond blanc ───────────────────────
         case PE_FrameTabWidget: {
@@ -406,19 +416,22 @@ public:
             // ── Generic frames ────────────────────────────────────
         case PE_Frame:
         {
+            p->save();
             bool isTable = qobject_cast<const QTableView*>(w) || qobject_cast<const QTreeView*>(w) || qobject_cast<const QListView*>(w);
             if(!isTable)
             {
+                p->restore();
                 return;
             }
             else
             {
-                p->save();
+
 
                 p->setBrush(Qt::NoBrush);
                 p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
-                p->restore();
+
             }
+            p->restore();
         }
         case PE_FrameLineEdit: {
             if (hasStyleSheet(w)){
@@ -446,7 +459,7 @@ public:
             p->setPen(QColor(Colors::border));
             if(!enabled)
             {
-                p->setPen(QColor(Colors::borderLight));
+                p->setPen(QColor(Colors::border));
                 p->setBrush(QColor(Colors::readOnlyInputBg));
             }
             p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
@@ -462,10 +475,6 @@ public:
             focusPen.setStyle(Qt::DashLine);
             p->setPen(focusPen);
             p->restore();
-            return;
-        }
-
-        case PE_PanelItemViewItem: {
             return;
         }
 
@@ -496,7 +505,7 @@ public:
             p->setRenderHint(QPainter::Antialiasing, true);
             const bool checked       = (opt->state & State_On) || (opt->state & State_Sunken);
             const bool indeterminate = opt->state & State_NoChange;
-            const bool enabled       = w->isEnabled();
+            const bool enabled       =w && w->isEnabled();
             bool hover = opt->state & State_MouseOver;
             QRect r = opt->rect.adjusted(1, 1, -1, -1);
 
@@ -578,9 +587,6 @@ public:
             case QStyle::SH_ItemView_ShowDecorationSelected:
                 return 1;
 
-            // Menus
-            case QStyle::SH_Menu_MouseTracking:
-                return 1;
 
             case QStyle::SH_Menu_SubMenuPopupDelay:
                 return 0; // ouverture immédiate
@@ -629,7 +635,7 @@ public:
             case QStyle::SH_TabBar_PreferNoArrows:
             case QStyle::SH_ScrollBar_LeftClickAbsolutePosition:
             case QStyle::SH_ListViewExpand_SelectMouseType:
-            case QStyle::SH_UnderlineShortcut: return 0;
+            case QStyle::SH_UnderlineShortcut:
             case QStyle::SH_SpinBox_AnimateButton:
             case QStyle::SH_SpinBox_KeyPressAutoRepeatRate:
             case QStyle::SH_SpinBox_ClickAutoRepeatRate:
@@ -702,12 +708,10 @@ public:
             case QStyle::SH_SpinBox_ButtonsInsideFrame:
             case QStyle::SH_SpinBox_StepModifier:
             case QStyle::SH_CustomBase:
-                break;
             case QStyle::SH_Widget_Animate:
-                break;
             case QStyle::SH_ItemView_ActivateItemOnSingleClick:
             case QStyle::SH_ScrollBar_Transient:
-                break;
+            default: break;
             }
         }
 
@@ -727,24 +731,48 @@ public:
             w->setAttribute(Qt::WA_Hover);
         }
 
-        if (auto v = qobject_cast<QAbstractItemView*>(w)) {
-            v->setMouseTracking(true);
-            v->viewport()->setMouseTracking(true); // TRÈS IMPORTANT
-            v->viewport()->setAttribute(Qt::WA_Hover);
-        }
-        // Dans polish()
-        if (touchMode) {
-            if (auto *sa = qobject_cast<QAbstractScrollArea*>(w)) {
-                QScroller::grabGesture(sa->viewport(), QScroller::TouchGesture);
-            }
-        }
+        if (auto *mb = qobject_cast<QMenuBar*>(w)) {
+            mb->setMouseTracking(true);
+            mb->setAttribute(Qt::WA_Hover);
+            mb->setFocusPolicy(Qt::NoFocus);
 
+
+
+            QPalette pal = mb->palette();
+            pal.setColor(QPalette::Window, QColor(Colors::windowBg));
+            pal.setColor(QPalette::Button, QColor(Colors::windowBg));
+            mb->setPalette(pal);
+            mb->setAutoFillBackground(true);
+        }
+        if(auto v = qobject_cast<QComboBox*>(w))
+            v->setItemDelegate(new QStyledItemDelegate(v));
+
+        if (qobject_cast<QScrollArea*>(w)) {
+            // Forcer le fond du viewport
+            w->setAutoFillBackground(false);
+            QScrollArea *sa = qobject_cast<QScrollArea*>(w);
+            sa->viewport()->setAutoFillBackground(false);
+            // ou pour imposer une couleur précise :
+            QPalette pal = sa->viewport()->palette();
+            pal.setColor(QPalette::Window, QColor(Qt::transparent));
+            sa->viewport()->setPalette(pal);
+        }
+        if (qobject_cast<QAbstractItemView*>(w)) {
+            qobject_cast<QAbstractItemView*>(w)->viewport()->setFont(QApplication::font());
+            w->setMouseTracking(true);
+        }
+        if (qobject_cast<QHeaderView*>(w)) {
+            w->setMouseTracking(true);
+            w->setAttribute(Qt::WA_Hover);
+
+        }
         QProxyStyle::polish(w);
 
 
     }
     bool hasStyleSheet(const QWidget *w) const {
         // Vérifier la stylesheet globale de l'application
+
         if (!qApp->styleSheet().isEmpty())
             return true;
 
@@ -844,7 +872,7 @@ public:
 
                 // Texte + raccourci manuellement (sans appeler Fusion)
                 p->setPen((w->isEnabled()) ? QColor(Colors::text)
-                                                       : QColor(Colors::textDisabled));
+                                           : QColor(Colors::textDisabled));
                 QRect textRect = opt->rect.adjusted(28, 0, -10, 0);
                 p->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextSingleLine,
                             mi->text.section('\t', 0, 0).remove('&'));
@@ -858,7 +886,7 @@ public:
                 if (mi->menuItemType == QStyleOptionMenuItem::SubMenu) {
                     QRect arrowRect(opt->rect.right() - 12,
                                     opt->rect.center().y() - 4,
-                                    10, 10);
+                                    14, 14);
                     drawArrow(p, arrowRect, QColor(Colors::text), Qt::RightArrow);
                 }
                 // Indicateur checkbox/radio dans le bandeau
@@ -978,30 +1006,35 @@ public:
         }
 
         case CE_MenuBarItem: {
-            p->save();
-            const bool selected = opt->state & State_Selected;
-            const bool pressed  = opt->state & State_Sunken;
-            bool hover = opt->state & State_MouseOver;
 
-            if (pressed || selected) {
-                p->fillRect(opt->rect, QColor(Colors::buttonHoverBg));
+            p->save();
+
+            const bool hovered =(opt->state & State_Selected) ||
+                                 (opt->state & State_MouseOver);
+            const bool pressed = opt->state & State_Sunken;
+
+            if (pressed) {
+                p->fillRect(opt->rect, QColor(Colors::windowBg));
                 p->setPen(QColor(Colors::border));
                 p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
             }
-            else if(hover)
-            {
-                p->fillRect(opt->rect, QColor(Colors::hoverHighlight));
-                p->setPen(QColor(Colors::borderHover));
-                p->drawRect(opt->rect.adjusted(0, 0, -1, -1));
-            }
-            else {
+            else if (hovered) {
+                p->setPen(QColor(Colors::border));
+                p->drawRoundedRect(opt->rect.adjusted(0, 0, -1, -1),4,4);
                 QLinearGradient bg(opt->rect.topLeft(), opt->rect.bottomLeft());
-                bg.setColorAt(0.0, QColor(255, 245, 200));   // haut clair
-                bg.setColorAt(1.0, QColor(240, 220, 150));   // bas un peu plus foncé
+                bg.setColorAt(0.0, QColor(255, 245, 200));
+                bg.setColorAt(1.0, QColor(240, 220, 150));
                 p->fillRect(opt->rect, bg);
             }
-            p->restore();
+            else {
+                p->setPen(QColor(Colors::border));
+
+                p->drawLine(opt->rect.bottomLeft(), opt->rect.bottomRight());
+            }
+
             QProxyStyle::drawControl(CE_MenuBarItem, opt, p, w);
+
+            p->restore();
             return;
         }
 
@@ -1084,7 +1117,8 @@ public:
         if (touchMode && type == CT_MenuItem) {
             s.setHeight(qMax(s.height(), 40));
         }
-
+        if(type == CT_PushButton)
+            s.setWidth(qMax(s.width(),96));
         return s;
     }
     // =========================================================
@@ -1135,6 +1169,10 @@ public:
                             QRect checkRect = subControlRect(CC_GroupBox, gb, SC_GroupBoxCheckBox, w);
                             QStyleOptionGroupBox checkOpt = *gb;
                             checkOpt.rect = checkRect;
+                            //Aligner verticalement au centre le checkbox
+                            checkOpt.rect.moveTop(titleRect.center().y() - checkRect.height() / 2);
+                            checkOpt.rect.moveLeft(titleRect.left() + 4); // 4px de marge à gauche
+
                             // Transférer l'état checked
                             if (gb->state & State_On)
                                 checkOpt.state |= State_On;
@@ -1148,7 +1186,7 @@ public:
                     // Texte decale a gauche
                     p->setPen(QColor(Colors::groupBoxTitle));
                     if(checkable)
-                        p->drawText(titleRect.adjusted(18, 0, -4, 0),
+                        p->drawText(titleRect.adjusted(26, 0, -4, 0),
                                     Qt::AlignVCenter | Qt::AlignLeft,
                                     gb->text);
                     else
@@ -1170,15 +1208,15 @@ public:
                 p->save();
                 const bool hover = cb->state & State_MouseOver;
                 const bool focus = cb->state & State_HasFocus;
-                bool enabled = w->isEnabled();
+                bool enabled = w && w->isEnabled();
                 QColor bg = enabled?(hover || focus) ? QColor(0xFFFFD92B)
-                                             : QColor(Colors::inputBg) : QColor(Colors::readOnlyInputBg);
+                                                       : QColor(Colors::inputBg) : QColor(Colors::readOnlyInputBg);
 
                 // Fond + bordure extérieure
                 p->setBrush(bg);
 
                 p->setPen(QColor(enabled?Colors::border : Colors::borderLight));
-                p->drawRect(cb->rect.adjusted(0, 0, -2, -1));
+                p->drawRect(cb->rect.adjusted(0, 0, -1, -1));
 
                 // Zone flèche
                 QRect arrowRect = subControlRect(CC_ComboBox, opt, SC_ComboBoxArrow, w);
@@ -1194,15 +1232,16 @@ public:
                 // 1. Remplissage
                 p->setPen(Qt::NoPen);
                 if(enabled)
-                p->setBrush(grad);
+                    p->setBrush(grad);
                 else
                     p->setBrush(QColor(Colors::readOnlyInputBg));
-                p->drawRect(r);
 
                 // 2. Bordure (après !)
-                p->setBrush(Qt::NoBrush);
-                p->setPen(QPen(QColor(Colors::border), 1));
-                p->drawRect(r);
+                if(enabled)
+                {
+                    p->setPen(QPen(QColor(Colors::border), 1));
+                    p->drawRect(r);
+                }
 
                 // Flèche centrée
                 int aw = 14;
@@ -1409,7 +1448,33 @@ public:
         }
         QProxyStyle::drawComplexControl(cc, opt, p, w);
     }
+    QRect subControlRect(ComplexControl cc,
+                         const QStyleOptionComplex *opt,
+                         SubControl sc,
+                         const QWidget *w) const override
+    {
+        QRect r = QProxyStyle::subControlRect(cc, opt, sc, w);
 
+        if (cc == CC_ComboBox) {
+            if (sc == SC_ComboBoxArrow) {
+                int arrowWidth = 20; // largeur fixe propre
+                return QRect(opt->rect.right() - arrowWidth,
+                             opt->rect.top(),
+                             arrowWidth,
+                             opt->rect.height());
+            }
+
+            if (sc == SC_ComboBoxEditField) {
+                int arrowWidth = 20;
+                return QRect(opt->rect.left() + 2,
+                             opt->rect.top() + 2,
+                             opt->rect.width() - arrowWidth - 4,
+                             opt->rect.height() - 4);
+            }
+        }
+
+        return r;
+    }
     // ── Pixel metrics ─────────────────────────────────────────
     int pixelMetric(PixelMetric pm,
                     const QStyleOption *opt = nullptr,
@@ -1513,6 +1578,23 @@ private:
         p->drawPolygon(arrow);
         p->restore();
     }
+    QIcon standardIcon(StandardPixmap sp,
+                       const QStyleOption *opt = nullptr,
+                       const QWidget *w = nullptr) const override
+    {
+        if (vistaStyle)
+            return vistaStyle->standardIcon(sp, opt, w);
+        return QProxyStyle::standardIcon(sp, opt, w);
+    }
+    QPixmap standardPixmap(StandardPixmap sp,
+                           const QStyleOption *opt = nullptr,
+                           const QWidget *w = nullptr) const override
+    {
+        if (vistaStyle)
+            return vistaStyle->standardPixmap(sp, opt, w);
+        return QProxyStyle::standardPixmap(sp, opt, w);
+    }
 private:
     bool touchMode = false;
+    QStyle *vistaStyle = QStyleFactory::create("windowsvista");
 };
